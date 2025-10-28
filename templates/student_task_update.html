@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Update Task | Task Management{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  <h1 class="text-2xl font-semibold mb-6 text-gray-700">Update Task: {{ task.title }}</h1>
+
+  <form method="post" enctype="multipart/form-data" class="bg-white shadow rounded-lg p-6 space-y-6">
+    {% csrf_token %}
+    <div>
+      <label class="block text-gray-700 font-medium mb-2">Status</label>
+      {{ task_form.status }}
+    </div>
+
+    <div>
+      <label class="block text-gray-700 font-medium mb-2">Upload Files</label>
+      {{ file_form.file }}
+    </div>
+
+    <button type="submit" class="bg-green-600 text-white px-5 py-2 rounded hover:bg-green-700 transition">
+      Save Changes
+    </button>
+  </form>
+
+  <div class="mt-8">
+    <h2 class="text-lg font-semibold mb-2 text-gray-700">Uploaded Files</h2>
+    <ul class="list-disc ml-5 text-gray-700">
+      {% for f in uploaded_files %}
+      <li><a href="{{ f.file.url }}" target="_blank" class="text-green-600 hover:underline">{{ f.file.name }}</a></li>
+      {% empty %}
+      <li class="text-gray-500">No files uploaded yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

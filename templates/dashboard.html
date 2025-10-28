@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | Task Management{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto">
+  <h1 class="text-3xl font-bold text-green-600 mb-6 text-center">
+    {{ user.username|title }}'s Dashboard
+  </h1>
+
+  {% if dashboard_type == 'teacher' %}
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-xl font-semibold text-gray-700">Tasks You Created</h2>
+      <a href="{% url 'task_create' %}" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">+ New Task</a>
+    </div>
+
+    <table class="w-full bg-white shadow rounded-lg overflow-hidden">
+      <thead class="bg-green-600 text-white">
+        <tr>
+          <th class="py-3 px-4 text-left">Title</th>
+          <th class="py-3 px-4 text-left">Assigned To</th>
+          <th class="py-3 px-4 text-left">Status</th>
+          <th class="py-3 px-4 text-left">Due Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for task in tasks %}
+          <tr class="border-b hover:bg-gray-50">
+            <td class="py-2 px-4">{{ task.title }}</td>
+            <td class="py-2 px-4">{{ task.assigned_to.username|default:"—" }}</td>
+            <td class="py-2 px-4">
+              {% if task.status == "completed" %}
+                <span class="text-green-600 font-semibold">{{ task.status|title }}</span>
+              {% elif task.status == "in_progress" %}
+                <span class="text-yellow-600 font-semibold">{{ task.status|title }}</span>
+              {% else %}
+                <span class="text-gray-600">{{ task.status|title }}</span>
+              {% endif %}
+            </td>
+            <td class="py-2 px-4">{{ task.due_date|default:"—" }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center py-4 text-gray-500">No tasks created yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+  {% elif dashboard_type == 'student' %}
+    <h2 class="text-xl font-semibold text-gray-700 mb-4">Tasks Assigned To You</h2>
+
+    <table class="w-full bg-white shadow rounded-lg overflow-hidden">
+      <thead class="bg-green-600 text-white">
+        <tr>
+          <th class="py-3 px-4 text-left">Title</th>
+          <th class="py-3 px-4 text-left">Status</th>
+          <th class="py-3 px-4 text-left">Due Date</th>
+          <th class="py-3 px-4 text-left">Assigned By</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for task in tasks %}
+          <tr class="border-b hover:bg-gray-50">
+            <td class="py-2 px-4">{{ task.title }}</td>
+            <td class="py-2 px-4">
+              {% if task.status == "completed" %}
+                <span class="text-green-600 font-semibold">{{ task.status|title }}</span>
+              {% elif task.status == "in_progress" %}
+                <span class="text-yellow-600 font-semibold">{{ task.status|title }}</span>
+              {% else %}
+                <span class="text-gray-600">{{ task.status|title }}</span>
+              {% endif %}
+            </td>
+            <td class="py-2 px-4">{{ task.due_date|default:"—" }}</td>
+            <td class="py-2 px-4">{{ task.created_by.username|default:"—" }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center py-4 text-gray-500">No tasks assigned yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+  {% else %}
+    <p class="text-center text-gray-600">You are not part of any group yet.</p>
+  {% endif %}
+</div>
+{% endblock %}
