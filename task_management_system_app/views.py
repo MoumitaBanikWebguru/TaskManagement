@@ -11,6 +11,8 @@ from django.utils.html import strip_tags
 from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
+from django.core.mail import send_mail
+from django.contrib.auth.hashers import make_password
 
 
 def home_view(request):
@@ -97,21 +99,44 @@ def register_view(request):
 def verify_email(request, token):
     token_obj = get_object_or_404(EmailVerification, token=token)
 
+    # 1️⃣ Check expiry
     if token_obj.is_expired():
         messages.error(request, "Verification link has expired. Please register again.")
         token_obj.delete()
         return redirect('register_view')
 
+    # 2️⃣ Activate user
     user = token_obj.user
     user.is_active = True
     user.save()
 
+    # 3️⃣ Mark token as verified
     token_obj.is_verified = True
     token_obj.save()
 
+    # 4️⃣ Send welcome email using send_mail()
+    try:
+        subject = "Welcome to Task Management!"
+        message = (
+            f"Hi {user.username},\n\n"
+            "🎉 Your email has been successfully verified!\n\n"
+            "Welcome to Task Management — you can now log in and start organizing your work.\n\n"
+            "Login here: http://127.0.0.1:8000/login/\n\n"
+            "Best regards,\n"
+            "The Task Management Team"
+        )
+        from_email = settings.DEFAULT_FROM_EMAIL
+        recipient_list = [user.email]
+
+        send_mail(subject, message, from_email, recipient_list, fail_silently=False)
+        print(f"✅ Welcome email sent to {user.email}")
+
+    except Exception as e:
+        print("⚠️ Error sending welcome email:", e)
+
+    # 5️⃣ Show success message & redirect
     messages.success(request, "Email verified successfully! You can now log in.")
     return redirect('login_view')
-
 
 def login_view(request):
     """Custom login using username and password with email verification check"""
@@ -266,3 +291,69 @@ def task_delete(request, pk):
     task.delete()
     messages.success(request, "Task deleted successfully.")
     return redirect('task_list')
+
+
+# 1️⃣ Forgot Password View
+def forgot_password_view(request):
+    if request.method == "POST":
+        form = ForgotPasswordForm(request.POST)
+        if form.is_valid():
+            email = form.cleaned_data['email']
+            user = User.objects.filter(email=email).first()
+
+            if user:
+                token = PasswordResetToken.objects.create(user=user)
+                reset_link = request.build_absolute_uri(
+                    reverse('reset_password', args=[str(token.token)])
+                )
+
+                # Render HTML email
+                context = {'user': user, 'reset_link': reset_link}
+                html_content = render_to_string('emails/reset_password.html', context)
+                text_content = strip_tags(html_content)
+
+                subject = "Reset your password - Task Management"
+                email_msg = EmailMultiAlternatives(
+                    subject, text_content, settings.DEFAULT_FROM_EMAIL, [email]
+                )
+                email_msg.attach_alternative(html_content, "text/html")
+                email_msg.send()
+
+                messages.success(request, "Password reset link has been sent to your email.")
+                return redirect('login_view')
+            else:
+                messages.error(request, "No user found with this email.")
+    else:
+        form = ForgotPasswordForm()
+
+    return render(request, 'forgot_password.html', {'form': form})
+
+
+# 2️⃣ Reset Password View
+def reset_password_view(request, token):
+    try:
+        reset_token = PasswordResetToken.objects.get(token=token)
+    except PasswordResetToken.DoesNotExist:
+        messages.error(request, "Invalid or expired reset link.")
+        return redirect('forgot_password')
+
+    if reset_token.is_expired() or reset_token.is_used:
+        messages.error(request, "Reset link expired or already used.")
+        return redirect('forgot_password')
+
+    if request.method == "POST":
+        form = ResetPasswordForm(request.POST)
+        if form.is_valid():
+            new_password = form.cleaned_data['new_password']
+            reset_token.user.password = make_password(new_password)
+            reset_token.user.save()
+
+            reset_token.is_used = True
+            reset_token.save()
+
+            messages.success(request, "Password reset successful! You can now log in.")
+            return redirect('login_view')
+    else:
+        form = ResetPasswordForm()
+
+    return render(request, 'reset_password.html', {'form': form})

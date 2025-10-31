@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 import uuid
+from datetime import timedelta
 
 class Task(models.Model):
     STATUS_CHOICES = [
@@ -62,3 +63,22 @@ class EmailVerification(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - Verified: {self.is_verified}"
+
+class PasswordResetToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_used = models.BooleanField(default=False)
+
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+
+    def save(self, *args, **kwargs):
+        # Automatically set expiry (valid for 15 mins)
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(minutes=15)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.user.username} - Reset token ({'used' if self.is_used else 'active'})"

@@ -17,5 +17,8 @@ urlpatterns = [
     path('<int:pk>/edit/', views.task_update, name='task_update'),
     path('<int:pk>/delete/', views.task_delete, name='task_delete'),
     path('verify/<uuid:token>/', views.verify_email, name='verify_email'),
+
+    path('forgot-password/', views.forgot_password_view, name='forgot_password'),
+    path('reset-password/<uuid:token>/', views.reset_password_view, name='reset_password'),
     
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
