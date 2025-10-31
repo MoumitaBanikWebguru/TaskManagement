@@ -2,8 +2,18 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.urls import reverse
 from .forms import *
 from .models import *
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from datetime import timedelta
+from django.utils import timezone
+from django.conf import settings
+from django.core.mail import send_mail
+from django.contrib.auth.hashers import make_password
+
 
 def home_view(request):
     return render(request, 'base.html')
@@ -30,40 +40,140 @@ def dashboard_view(request):
         'dashboard_type': dashboard_type,
     })
 
+
 def register_view(request):
-    """User registration with group selection"""
+    """User registration with group selection + HTML email verification"""
     if request.method == 'POST':
         form = RegisterForm(request.POST)
         if form.is_valid():
-            user = form.save()
-            messages.success(request, "Registration successful! You can now log in.")
+            user = form.save(commit=False)
+            user.is_active = False
+            user.save()
+
+            # Add group manually (commit=False skips form.save() group logic)
+            group = form.cleaned_data['group']
+            user.groups.add(group)
+
+            # Create verification token (2-hour expiry)
+            token_obj = EmailVerification.objects.create(
+                user=user,
+                expires_at=timezone.now() + timedelta(minutes=5)
+            )
+
+            # Build verification link safely
+            verify_link = request.build_absolute_uri(
+                reverse('verify_email', args=[str(token_obj.token)])
+            )
+
+            # Render HTML email template
+            context = {
+                'user': user,
+                'verify_link': verify_link,
+                'current_year': timezone.now().year,
+            }
+            html_content = render_to_string('emails/verify_email.html', context)
+            text_content = strip_tags(html_content)
+
+            subject = "Verify your email - Task Management"
+            email = EmailMultiAlternatives(
+                subject,
+                text_content,
+                settings.DEFAULT_FROM_EMAIL,
+                [user.email],
+            )
+            email.attach_alternative(html_content, "text/html")
+
+            try:
+                email.send()
+                messages.success(request, "Registration successful! Please check your email to verify your account.")
+            except Exception as e:
+                messages.error(request, "Could not send verification email. Please try again later.")
+                print("Email error:", e)
+
             return redirect('login_view')
     else:
         form = RegisterForm()
+
     return render(request, 'register.html', {'form': form})
 
+def verify_email(request, token):
+    token_obj = get_object_or_404(EmailVerification, token=token)
+
+    # 1️⃣ Check expiry
+    if token_obj.is_expired():
+        messages.error(request, "Verification link has expired. Please register again.")
+        token_obj.delete()
+        return redirect('register_view')
+
+    # 2️⃣ Activate user
+    user = token_obj.user
+    user.is_active = True
+    user.save()
+
+    # 3️⃣ Mark token as verified
+    token_obj.is_verified = True
+    token_obj.save()
+
+    # 4️⃣ Send welcome email using send_mail()
+    try:
+        subject = "Welcome to Task Management!"
+        message = (
+            f"Hi {user.username},\n\n"
+            "🎉 Your email has been successfully verified!\n\n"
+            "Welcome to Task Management — you can now log in and start organizing your work.\n\n"
+            "Login here: http://127.0.0.1:8000/login/\n\n"
+            "Best regards,\n"
+            "The Task Management Team"
+        )
+        from_email = settings.DEFAULT_FROM_EMAIL
+        recipient_list = [user.email]
+
+        send_mail(subject, message, from_email, recipient_list, fail_silently=False)
+        print(f"✅ Welcome email sent to {user.email}")
+
+    except Exception as e:
+        print("⚠️ Error sending welcome email:", e)
+
+    # 5️⃣ Show success message & redirect
+    messages.success(request, "Email verified successfully! You can now log in.")
+    return redirect('login_view')
 
 def login_view(request):
-    """Custom login using username and password"""
-    # if request.user.is_authenticated:
-    #     return redirect('task_list')  # redirect if already logged in
+    """Custom login using username and password with email verification check"""
 
     if request.method == 'POST':
         form = LoginForm(request.POST)
         if form.is_valid():
             username = form.cleaned_data['username']
             password = form.cleaned_data['password']
+
             user = authenticate(request, username=username, password=password)
+
             if user is not None:
-                login(request, user)
-                messages.success(request, f"Welcome back, {user.username}!")
-                return redirect('task_list')
+                try:
+                    verification = EmailVerification.objects.get(user=user)
+                except EmailVerification.DoesNotExist:
+                    verification = None
+
+                # 1️⃣ Check if email verified
+                if verification and verification.is_verified:
+                    # 2️⃣ Check if user active
+                    if user.is_active:
+                        login(request, user)
+                        messages.success(request, f"Welcome back, {user.username}!")
+                        return redirect('task_list')
+                    else:
+                        messages.error(request, "Your account is inactive. Contact admin.")
+                else:
+                    messages.error(request, "Please verify your email before logging in.")
+                    return redirect('login_view')
+
             else:
                 messages.error(request, "Invalid username or password.")
     else:
         form = LoginForm()
-    return render(request, 'login.html', {'form': form})
 
+    return render(request, 'login.html', {'form': form})
 
 @login_required
 def logout_view(request):
@@ -181,3 +291,69 @@ def task_delete(request, pk):
     task.delete()
     messages.success(request, "Task deleted successfully.")
     return redirect('task_list')
+
+
+# 1️⃣ Forgot Password View
+def forgot_password_view(request):
+    if request.method == "POST":
+        form = ForgotPasswordForm(request.POST)
+        if form.is_valid():
+            email = form.cleaned_data['email']
+            user = User.objects.filter(email=email).first()
+
+            if user:
+                token = PasswordResetToken.objects.create(user=user)
+                reset_link = request.build_absolute_uri(
+                    reverse('reset_password', args=[str(token.token)])
+                )
+
+                # Render HTML email
+                context = {'user': user, 'reset_link': reset_link}
+                html_content = render_to_string('emails/reset_password.html', context)
+                text_content = strip_tags(html_content)
+
+                subject = "Reset your password - Task Management"
+                email_msg = EmailMultiAlternatives(
+                    subject, text_content, settings.DEFAULT_FROM_EMAIL, [email]
+                )
+                email_msg.attach_alternative(html_content, "text/html")
+                email_msg.send()
+
+                messages.success(request, "Password reset link has been sent to your email.")
+                return redirect('login_view')
+            else:
+                messages.error(request, "No user found with this email.")
+    else:
+        form = ForgotPasswordForm()
+
+    return render(request, 'forgot_password.html', {'form': form})
+
+
+# 2️⃣ Reset Password View
+def reset_password_view(request, token):
+    try:
+        reset_token = PasswordResetToken.objects.get(token=token)
+    except PasswordResetToken.DoesNotExist:
+        messages.error(request, "Invalid or expired reset link.")
+        return redirect('forgot_password')
+
+    if reset_token.is_expired() or reset_token.is_used:
+        messages.error(request, "Reset link expired or already used.")
+        return redirect('forgot_password')
+
+    if request.method == "POST":
+        form = ResetPasswordForm(request.POST)
+        if form.is_valid():
+            new_password = form.cleaned_data['new_password']
+            reset_token.user.password = make_password(new_password)
+            reset_token.user.save()
+
+            reset_token.is_used = True
+            reset_token.save()
+
+            messages.success(request, "Password reset successful! You can now log in.")
+            return redirect('login_view')
+    else:
+        form = ResetPasswordForm()
+
+    return render(request, 'reset_password.html', {'form': form})

@@ -68,3 +68,25 @@ class TaskFileForm(forms.ModelForm):
     class Meta:
         model = TaskFile
         fields = ['file']
+
+class ForgotPasswordForm(forms.Form):
+    email = forms.EmailField(label="Email", widget=forms.EmailInput(attrs={
+        "placeholder": "Enter your registered email",
+        "class": "border rounded p-3 w-full"
+    }))
+
+class ResetPasswordForm(forms.Form):
+    new_password = forms.CharField(
+        label="New Password",
+        widget=forms.PasswordInput(attrs={"placeholder": "Enter new password", "class": "border rounded p-3 w-full"})
+    )
+    confirm_password = forms.CharField(
+        label="Confirm Password",
+        widget=forms.PasswordInput(attrs={"placeholder": "Confirm new password", "class": "border rounded p-3 w-full"})
+    )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get("new_password") != cleaned_data.get("confirm_password"):
+            raise forms.ValidationError("Passwords do not match.")
+        return cleaned_data
