@@ -2,8 +2,16 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.urls import reverse
 from .forms import *
 from .models import *
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from datetime import timedelta
+from django.utils import timezone
+from django.conf import settings
+
 
 def home_view(request):
     return render(request, 'base.html')
@@ -30,40 +38,117 @@ def dashboard_view(request):
         'dashboard_type': dashboard_type,
     })
 
+
 def register_view(request):
-    """User registration with group selection"""
+    """User registration with group selection + HTML email verification"""
     if request.method == 'POST':
         form = RegisterForm(request.POST)
         if form.is_valid():
-            user = form.save()
-            messages.success(request, "Registration successful! You can now log in.")
+            user = form.save(commit=False)
+            user.is_active = False
+            user.save()
+
+            # Add group manually (commit=False skips form.save() group logic)
+            group = form.cleaned_data['group']
+            user.groups.add(group)
+
+            # Create verification token (2-hour expiry)
+            token_obj = EmailVerification.objects.create(
+                user=user,
+                expires_at=timezone.now() + timedelta(minutes=5)
+            )
+
+            # Build verification link safely
+            verify_link = request.build_absolute_uri(
+                reverse('verify_email', args=[str(token_obj.token)])
+            )
+
+            # Render HTML email template
+            context = {
+                'user': user,
+                'verify_link': verify_link,
+                'current_year': timezone.now().year,
+            }
+            html_content = render_to_string('emails/verify_email.html', context)
+            text_content = strip_tags(html_content)
+
+            subject = "Verify your email - Task Management"
+            email = EmailMultiAlternatives(
+                subject,
+                text_content,
+                settings.DEFAULT_FROM_EMAIL,
+                [user.email],
+            )
+            email.attach_alternative(html_content, "text/html")
+
+            try:
+                email.send()
+                messages.success(request, "Registration successful! Please check your email to verify your account.")
+            except Exception as e:
+                messages.error(request, "Could not send verification email. Please try again later.")
+                print("Email error:", e)
+
             return redirect('login_view')
     else:
         form = RegisterForm()
+
     return render(request, 'register.html', {'form': form})
+
+def verify_email(request, token):
+    token_obj = get_object_or_404(EmailVerification, token=token)
+
+    if token_obj.is_expired():
+        messages.error(request, "Verification link has expired. Please register again.")
+        token_obj.delete()
+        return redirect('register_view')
+
+    user = token_obj.user
+    user.is_active = True
+    user.save()
+
+    token_obj.is_verified = True
+    token_obj.save()
+
+    messages.success(request, "Email verified successfully! You can now log in.")
+    return redirect('login_view')
 
 
 def login_view(request):
-    """Custom login using username and password"""
-    # if request.user.is_authenticated:
-    #     return redirect('task_list')  # redirect if already logged in
+    """Custom login using username and password with email verification check"""
 
     if request.method == 'POST':
         form = LoginForm(request.POST)
         if form.is_valid():
             username = form.cleaned_data['username']
             password = form.cleaned_data['password']
+
             user = authenticate(request, username=username, password=password)
+
             if user is not None:
-                login(request, user)
-                messages.success(request, f"Welcome back, {user.username}!")
-                return redirect('task_list')
+                try:
+                    verification = EmailVerification.objects.get(user=user)
+                except EmailVerification.DoesNotExist:
+                    verification = None
+
+                # 1️⃣ Check if email verified
+                if verification and verification.is_verified:
+                    # 2️⃣ Check if user active
+                    if user.is_active:
+                        login(request, user)
+                        messages.success(request, f"Welcome back, {user.username}!")
+                        return redirect('task_list')
+                    else:
+                        messages.error(request, "Your account is inactive. Contact admin.")
+                else:
+                    messages.error(request, "Please verify your email before logging in.")
+                    return redirect('login_view')
+
             else:
                 messages.error(request, "Invalid username or password.")
     else:
         form = LoginForm()
-    return render(request, 'login.html', {'form': form})
 
+    return render(request, 'login.html', {'form': form})
 
 @login_required
 def logout_view(request):
