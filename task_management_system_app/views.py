@@ -194,16 +194,40 @@ def task_list(request):
     """
     Teachers → see all tasks
     Students → see only their assigned tasks
+    Search + Filter by status
     """
-    if user_in_group(request.user, 'Teacher'):
+    user = request.user
+    search_query = request.GET.get('search', '').strip()
+    status_filter = request.GET.get('status', '').strip()
+
+    # Base queryset by user role
+    if user_in_group(user, 'Teacher'):
         tasks = Task.objects.all().order_by('-created_at')
-    elif user_in_group(request.user, 'Student'):
-        tasks = Task.objects.filter(assigned_to=request.user).order_by('-created_at')
+    elif user_in_group(user, 'Student'):
+        tasks = Task.objects.filter(assigned_to=user).order_by('-created_at')
     else:
         tasks = Task.objects.none()
 
-    return render(request, 'tasks.html', {'tasks': tasks})
+    # Apply search filter (search by title or description)
+    if search_query:
+        tasks = tasks.filter(
+            Q(title__icontains=search_query) |
+            Q(description__icontains=search_query)
+        )
 
+    # Apply status filter if selected
+    if status_filter:
+        tasks = tasks.filter(status=status_filter)
+        
+    due_date_filter = request.GET.get('due_date')
+    if due_date_filter:
+        tasks = tasks.filter(due_date=due_date_filter)
+
+    return render(request, 'tasks.html', {
+        'tasks': tasks,
+        'search_query': search_query,
+        'status_filter': status_filter,
+    })
 
 # ➕ CREATE VIEW (Teacher only)
 @login_required

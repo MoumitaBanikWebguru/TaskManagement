@@ -7,6 +7,30 @@
     <a href="{% url 'task_create' %}" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">+ Add Task</a>
   {% endif %}
 </div>
+<form method="get" class="flex gap-2 mb-4">
+  <input
+    type="text"
+    name="search"
+    value="{{ search_query }}"
+    placeholder="Search tasks..."
+    class="border border-gray-300 rounded-lg p-2 w-1/2"
+  />
+
+  <select name="status" class="border border-gray-300 rounded-lg p-2">
+    <option value="">All Status</option>
+    <option value="Pending" {% if status_filter == 'Pending' %}selected{% endif %}>Pending</option>
+    <option value="In Progress" {% if status_filter == 'In Progress' %}selected{% endif %}>In Progress</option>
+    <option value="Completed" {% if status_filter == 'Completed' %}selected{% endif %}>Completed</option>
+  </select>
+
+  <button
+    type="submit"
+    class="bg-green-500 hover:bg-green-600 text-white font-medium px-4 py-2 rounded-lg"
+  >
+    Search
+  </button>
+  <input type="date" name="due_date" value="{{ request.GET.due_date }}" class="border p-2 rounded-lg" />
+</form>
 
 <table class="w-full bg-white shadow rounded-lg overflow-hidden">
   <thead class="bg-green-600 text-white">
