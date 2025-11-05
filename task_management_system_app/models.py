@@ -14,11 +14,8 @@ class Task(models.Model):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     # Assign to a student (User in "Student" group)
-    assigned_to = models.ForeignKey(
+    assigned_to = models.ManyToManyField(
         User,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
         related_name='tasks_assigned',
         help_text="Select the student assigned to this task."
     )

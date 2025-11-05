@@ -42,7 +42,7 @@ class TaskForm(forms.ModelForm):
                 'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-green-500 outline-none',
                 'rows': 4
             }),
-            'assigned_to': forms.Select(attrs={
+            'assigned_to': forms.SelectMultiple(attrs={
                 'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-green-500 outline-none'
             }),
             'status': forms.Select(attrs={
