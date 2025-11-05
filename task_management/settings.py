@@ -11,7 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
-
+from celery.schedules import crontab
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -143,6 +143,17 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'moumitawebguru@gmail.com'
-EMAIL_HOST_PASSWORD = 'badl beep xrww sbtk'
+EMAIL_HOST_USER = 'jsdev03012022@gmail.com'
+EMAIL_HOST_PASSWORD = 'jdyqirniiajnbogb'
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+CELERY_BROKER_URL = "redis://localhost:6379/0"
+CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
+CELERY_BEAT_SCHEDULE = {}
+
+CELERY_BEAT_SCHEDULE = {
+    "send-weekly-summary": {
+        "task": "tasks.tasks.send_weekly_summary_email",
+        "schedule": crontab(hour=10, minute=0, day_of_week="monday"),
+    },
+}
